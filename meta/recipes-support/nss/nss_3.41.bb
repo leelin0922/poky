@@ -25,11 +25,14 @@ SRC_URI = "http://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/${VERSIO
            file://nss-fix-nsinstall-build.patch \
            file://disable-Wvarargs-with-clang.patch \
            file://pqg.c-ULL_addend.patch \
-           file://Fix-compilation-for-X32.patch \
+           file://blank-cert9.db \
+           file://blank-key4.db \
+           file://system-pkcs11.txt \
+           file://nss-fix-SHA_HTONL-bug-for-arm-32be.patch \
            "
 
-SRC_URI[md5sum] = "ebb44f1394250d2cf6ec3c2e3d71fa20"
-SRC_URI[sha256sum] = "933439214dc03ee60e86d1419c19e1568998b0776dde987f41fa70ced6cd08dc"
+SRC_URI[md5sum] = "eec62a289387a7ce2fd9cca1f76600f3"
+SRC_URI[sha256sum] = "ab2e18f5d0dd0079c0005396f9beb9a41e9a1bbc7e6c1d0a99affcef0471712d"
 
 UPSTREAM_CHECK_URI = "https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/NSS_Releases"
 UPSTREAM_CHECK_REGEX = "NSS_(?P<pver>.+)_release_notes"
@@ -89,6 +92,8 @@ do_compile() {
         OS_TEST=ppc64
     elif [ "${TARGET_ARCH}" = "mips" -o "${TARGET_ARCH}" = "mipsel" -o "${TARGET_ARCH}" = "mips64" -o "${TARGET_ARCH}" = "mips64el" ]; then
         OS_TEST=mips
+    elif [ "${TARGET_ARCH}" = "aarch64_be" ]; then
+        OS_TEST="aarch64"
     else
         OS_TEST="${TARGET_ARCH}"
     fi
@@ -144,6 +149,9 @@ do_install() {
         OS_TEST=ppc64
     elif [ "${TARGET_ARCH}" = "mips" -o "${TARGET_ARCH}" = "mipsel" -o "${TARGET_ARCH}" = "mips64" -o "${TARGET_ARCH}" = "mips64el" ]; then
         OS_TEST=mips
+    elif [ "${TARGET_ARCH}" = "aarch64_be" ]; then
+        CPU_ARCH=aarch64
+        OS_TEST="aarch64"
     else
         OS_TEST="${TARGET_ARCH}"
     fi
@@ -208,12 +216,16 @@ do_install_append() {
 }
 
 do_install_append_class-target() {
-    # Create a blank certificate
-    mkdir -p ${D}${sysconfdir}/pki/nssdb/
-    touch ./empty_password
-    certutil -N -d ${D}${sysconfdir}/pki/nssdb/ -f ./empty_password
-    chmod 644 ${D}${sysconfdir}/pki/nssdb/*.db
-    rm ./empty_password
+    # It used to call certutil to create a blank certificate with empty password at
+    # build time, but the checksum of key4.db changes every time when certutil is called.
+    # It causes non-determinism issue, so provide databases with a blank certificate
+    # which are originally from output of nss in qemux86-64 build. You can get these
+    # databases by:
+    # certutil -N -d sql:/database/path/ --empty-password
+    install -d ${D}${sysconfdir}/pki/nssdb/
+    install -m 0644 ${WORKDIR}/blank-cert9.db ${D}${sysconfdir}/pki/nssdb/cert9.db
+    install -m 0644 ${WORKDIR}/blank-key4.db ${D}${sysconfdir}/pki/nssdb/key4.db
+    install -m 0644 ${WORKDIR}/system-pkcs11.txt ${D}${sysconfdir}/pki/nssdb/pkcs11.txt
 }
 
 PACKAGE_WRITE_DEPS += "nss-native"
